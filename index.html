@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mine</title>
+    <link rel="stylesheet" href="https://unpkg.com/element-ui/lib/theme-chalk/index.css">
+    <script src="https://unpkg.com/vue/dist/vue.js"></script>
+    <script src="https://unpkg.com/element-ui/lib/index.js"></script>
+</head>
+
+<body>
+    <div id="game">
+        <div class="controls">
+            <div>
+                <label for="width">Width</label>
+                <el-slider v-model="config.width" :min="10" :max="25" :step="1">
+                </el-slider>
+            </div>
+            <div>
+                <label for="height">Height</label>
+                <el-slider v-model="config.height" :min="10" :max="25" :step="1">
+            </div>
+            <div>
+                <label for="bombs">Bombs</label>
+                <el-slider :min="10" :max="Math.round(config.width * config.height/2)" v-model="config.bombs" :step="1">
+                    <input type="number">
+            </div>
+            <div>
+                <i class="el-icon-s-flag"></i>Bombs left: {{ mines.length - flags.length}}
+            </div>
+            <el-divider></el-divider>
+            <div>
+                <el-button type="primary" @click="build">Restart game</el-button>
+            </div>
+            <div class="debug">
+                <!-- {{mines}} -->
+                <!-- {{open}} -->
+                <!-- {{flags}} -->
+                <!-- <br>{{matrix}} -->
+            </div>
+            <hr>
+        </div>
+        <div class="field" :class="{ over: finished }">
+            <div v-for=" row, y in matrix" v-if="matrix.length > 0" class="row">
+                <span v-for="cell, x in row" :class="getClass(x+1, y+1)" @click="click(x+1, y+1)" @contextmenu.prevent="flag(x+1, y+1)">
+                </span>
+            </div>
+            <div :class="{overlay: true, success: win}"></div>
+        </div>
+    </div>
+</body>
+<script>
+    new Vue({
+        el: '#game',
+        data() {
+            return {
+                config: {
+                    width: 12,
+                    height: 12,
+                    bombs: 10,
+                },
+                finished: false,
+                mines: [],
+                flags: [],
+                open: [],
+                matrix: []
+            }
+        },
+        watch: {
+            config: {
+                deep: true,
+                handler() {
+                    this.build();
+                }
+            },
+            flags: {
+                deep: true,
+                handler() {
+
+                }
+            }
+        },
+        computed: {
+            win() {
+                if (this.mines.length == this.flags.length) {
+                    let equals = true;
+                    this.flags.map(f => {
+                        if (this.flags.indexOf(f) < 0) equals = false; //not all flags are correct
+                    });
+                    return equals;
+                }
+                return false;
+            }
+        },
+        created() {
+            window['Mine'] = this;
+            this.build();
+        },
+        methods: {
+            build() {
+                this.open = [];
+                this.mines = [];
+                this.flags = [];
+                if (this.config.width < 10) {
+                    this.config.width = 10;
+                }
+                if (this.config.height < 10) {
+                    this.config.height = 10;
+                }
+                if (this.config.width > 25) {
+                    this.config.width = 25;
+                }
+                if (this.config.height > 25) {
+                    this.config.height = 25;
+                }
+                newmatrix = [];
+                for (let i = 0; i < this.config.height; i++) {
+                    const row = [];
+                    for (let r = 0; r < this.config.width; r++) {
+                        row.push(0)
+                    }
+                    newmatrix.push(row);
+                }
+
+                this.matrix = newmatrix;
+                this.setBombs();
+                this.finished = false;
+            },
+            getClass(x, y) { //
+                let cl = ['cell'];
+                const coord = this.getCellPosition(x, y);
+                if (this.flags.indexOf(coord) > -1) {
+                    cl.push('flag');
+                }
+                if (this.open.indexOf(coord) > -1) {
+                    cl.push('open');
+                }
+                if (this.mines.indexOf(coord) > -1) {
+                    cl.push('bomb');
+                    if (this.finished == coord) {
+                        cl.push('boom');
+                    }
+                }
+                if (this.matrix[y - 1][x - 1] > 0) {
+                    cl.push("n" + this.matrix[y - 1][x - 1]);
+                }
+                return cl.join(" ");
+            },
+            getCellPosition(x, y) { //XY coords to numeric position
+                if (x > this.config.width) return false;
+                if (y > this.config.height) return false;
+                return ((y - 1) * this.config.width) + x;
+            },
+            setBombs() { // fill field with bombs
+                this.mines = [];
+                if (this.config.bombs > this.width * this.height / 2) {
+                    this.config.bombs = this.width * this.height / 2
+                }
+                for (let b = 0; b < this.config.bombs; b++) {
+                    const randomX = Math.floor(Math.random() * (this.config.width) + 1);
+                    const randomY = Math.floor(Math.random() * (this.config.height) + 1);
+
+                    const coord = this.getCellPosition(randomX, randomY);
+
+                    if (coord && this.mines.indexOf(coord) == -1) {
+                        this.matrix[randomY - 1][randomX - 1] = -1;
+                        this.mines.push(coord);
+                    } else {
+                        b--;
+                    }
+                }
+
+                this.mines.map(b => {
+                    n = this.getNeighborhoods(b);
+                    n.map(xy => {
+                        if (this.matrix[xy[1] - 1][xy[0] - 1] >= 0) { //if cell not contains bomb
+                            this.matrix[xy[1] - 1][xy[0] - 1]++;
+                        }
+                    })
+                });
+            },
+            position2coords(position) { //numeric position to XY coords
+                let y = ~~(position / this.config.width);
+                if (position / this.config.width - y == 0) {
+                    y--;
+                }
+                const x = position - (y * this.config.width);
+                return [x, y + 1];
+            },
+            getNeighborhoods(coord) { //get cell's neighborhood cells
+                let n = [];
+                const xy = this.position2coords(coord);
+                const X = xy[0];
+                const Y = xy[1];
+
+                if (X > 1) {
+                    n.push([xy[0] - 1, xy[1], 'left']); //left
+                }
+                if (X > 1 && Y > 1) {
+                    n.push([xy[0] - 1, xy[1] - 1, 'upleft']); //upleft
+                }
+                if (X > 1 && Y < this.config.height)
+                    n.push([xy[0] - 1, xy[1] + 1, 'downleft']); //downleft
+
+                if (X < this.config.width) {
+                    n.push([xy[0] + 1, xy[1], 'right']); //right
+                }
+                if (X < this.config.width && Y < this.config.height) {
+                    n.push([xy[0] + 1, xy[1] + 1, 'downright']); //downright
+                }
+                if (X < this.config.width && Y > 1) {
+                    n.push([xy[0] + 1, xy[1] - 1, 'upright']); //upright
+                }
+                if (Y > 1) {
+                    n.push([xy[0], xy[1] - 1, 'up']); //up
+                }
+                if (Y < this.config.height) {
+                    n.push([xy[0], xy[1] + 1, 'down']); //down
+                }
+                return n;
+
+            },
+            click(x, y) { //hangle left click
+                const coord = this.getCellPosition(x, y);
+                if (this.flags.indexOf(coord) > -1) {
+                    return false;
+                }
+                if (this.mines.indexOf(coord) > -1) {
+                    this.finished = coord;
+                    this.open = this.open.concat(this.mines);
+                }
+                if (this.open.indexOf(coord) == -1) {
+                    //if cell is not opened
+                    this.open.push(coord);
+                    num = this.matrix[y - 1][x - 1]; //how many bombs are around clicked cell
+                    if (num == 0) { //if cell is empty then open empty neighborhoods
+                        const n = this.getNeighborhoods(coord);
+                        n.map(xy => {
+                            this.click(xy[0], xy[1]);
+                        });
+                    }
+                }
+            },
+            flag(x, y) { // set or remove Flag
+                const coord = this.getCellPosition(x, y);
+
+                if (this.flags.indexOf(coord) == -1 && this.open.indexOf(coord) == -1 && this.flags.length < this.mines.length) {
+                    this.flags.push(coord);
+                } else {
+                    this.flags.splice(this.flags.indexOf(coord), 1);
+                }
+            }
+        }
+    });
+</script>
+<style>
+    #game {
+        /* display: flex; */
+        padding: 30px;
+    }
+
+    .controls {
+        max-width: 400px;
+
+    }
+
+    .field {
+        margin: 10px;
+        display: inline-block;
+        position: relative;
+    }
+
+    .field .overlay {
+        display: none;
+        position: absolute;
+        width: 100%;
+        top: 0;
+        height: 100%;
+        box-sizing: border-box;
+    }
+
+    .field .overlay.success {
+        border: 3px solid green;
+        display: block;
+        background-color: rgba(164, 201, 160, 0.2);
+
+    }
+
+    .field.over {
+        pointer-events: none;
+    }
+
+    .field.over .overlay {
+        display: block;
+        border: 3px solid red;
+        background-color: rgba(224, 133, 133, 0.2);
+    }
+
+    .row {
+        display: flex;
+    }
+
+    .cell {
+        transition: background-color 0.2s ease;
+        width: 30px;
+        height: 30px;
+        border: 1px solid black;
+        background-color: #CCC;
+        color: #FFF;
+        cursor: pointer;
+    }
+
+    .cell.open:hover,
+    .cell.open {
+        color: #000;
+        background-color: #FFF;
+    }
+
+    .cell:hover {
+        background-color: olive;
+    }
+
+    .cell:before {
+        display: inline-block;
+        text-align: center;
+        width: 30px;
+        line-height: 30px;
+    }
+
+    .cell.flag {
+        background-color: rgb(236, 217, 217);
+    }
+
+    .cell.flag:before {
+        content: "🚩";
+    }
+
+    .cell.bomb.boom {
+        background-color: red;
+    }
+
+    .cell.bomb.open:before {
+        content: "💣";
+    }
+
+    .cell.open.n1:before {
+        content: "1️⃣";
+    }
+
+    .cell.open.n2:before {
+        content: "2️⃣";
+    }
+
+    .cell.open.n3:before {
+        content: "3️⃣";
+    }
+
+    .cell.open.n4:before {
+        content: "4️⃣";
+    }
+
+    .cell.open.n5:before {
+        content: "5️⃣";
+    }
+
+    .cell.open.n6:before {
+        content: "6️⃣";
+    }
+
+    .cell.open.n7:before {
+        content: "7️⃣";
+    }
+
+    .cell.open.n8:before {
+        content: "8️⃣";
+    }
+</style>
+
+</html>
