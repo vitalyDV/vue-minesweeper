@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lines</title>
+    <script src="vue.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/element-ui/lib/theme-chalk/index.css">
+    <!-- <script src="https://unpkg.com/vue/dist/vue.js"></script> -->
+    <script src="https://unpkg.com/element-ui/lib/index.js"></script>
+</head>
+
+<body>
+    <div id="game">
+        <div class="field" :class="{ over: finished, onselect: selected }">
+            <el-button @click="drawer = true">Config</el-button>
+            <div class="toolbar">
+                <div class="score">
+                    <h3>{{bonus}}</h3>
+                </div>
+                <div class="nextballs" @click="setBalls">
+                    <span :class="'ball c'+ball.color" v-for="ball in next"></span>
+                </div>
+            </div>
+            <div v-for=" row, y in matrix" v-if="matrix.length > 0" class="row">
+                <span v-for="cell, x in row" class="cell" @click="click(x+1, y+1)">
+                    <sub v-if="config.debug" style="position: absolute;">{{getCellPosition(x+1, y+1)}}</sub>
+                    <span :class="getClass(x+1, y+1)">
+                    </span>
+                </span>
+            </div>
+            <div :class="{overlay: true, success: win}"></div>
+            <el-divider></el-divider>
+            <div>
+                <el-button type="primary" @click="build">Restart game</el-button>
+            </div>
+        </div>
+
+        <el-drawer title="Configuration" :visible.sync="drawer" direction="rtl" size="40%" :modal="false">
+            <div class="controls">
+                <div>
+                    <label for="width">Width</label>
+                    <el-slider v-model="config.width" :show-tooltip="false" :show-input="true" :min="4" :max="14" :step="1">
+                    </el-slider>
+                </div>
+                <div>
+                    <label for="height">Height</label>
+                    <el-slider v-model="config.height" :show-tooltip="false" :show-input="true" :min="4" :max="14" :step="1">
+                </div>
+                <div>
+                    <label for="height">Colors</label>
+                    <el-slider v-model="config.colors" :show-tooltip="false" :show-input="true" :min="3" :max="8" :step="1">
+                </div>
+                <div>
+                    <label for="height">Balls in line to destroy</label>
+                    <el-slider v-model="config.destroyline" :show-tooltip="false" :show-input="true" :min="3" :max="7" :step="1">
+                </div>
+                <div>
+                    <label for="height">New balls per move</label>
+                    <el-slider v-model="config.dispense" :show-tooltip="false" :show-input="true" :min="2" :max="5" :step="1">
+                </div>
+                <el-divider></el-divider>
+                <el-checkbox v-model="config.teleport">Teleport</el-checkbox>
+                <br>
+                <el-checkbox v-model="config.hint">Show hint</el-checkbox>
+                <br>
+                <el-checkbox v-model="config.debug">Debug</el-checkbox>
+
+            </div>
+    </div>
+</body>
+<script>
+    new Vue({
+        el: '#game',
+        data() {
+            return {
+                config: {
+                    basebonus: 10,
+                    debug: false,
+                    width: 8,
+                    height: 8,
+                    colors: 5,
+                    dispense: 3, //how many ball will be added per move
+                    teleport: false,
+                    destroyline: 5, //how many balls need per line to destroy,
+                    hint: true,
+                },
+                drawer: false,
+                next: [], //store next balls hint
+                bonus: 0, //score
+                selected: false, //current selected cell
+                finished: false, //gave over
+                matrix: [], //storage
+                possibleMoves: [], //array of possible moves
+                debounce: null, //not used yet
+            }
+        },
+        watch: {
+            config: {
+                deep: true,
+                handler() {
+                    this.build();
+                    // if (this.debounce) return true;
+                    // this.debounce = (() => {
+                    //     this.debounce = null;
+                    // }, 300)
+                }
+            },
+            selected() {
+                this.possibleMoves = [];
+                if (this.selected) {
+                    this.setPossibleMoves(this.selected);
+                }
+                console.log('possible moves:' + this.possibleMoves.length);
+            }
+        },
+        computed: {
+            win() {
+                return false;
+            },
+
+        },
+        created() {
+            window['Lines'] = this;
+            this.build();
+        },
+        methods: {
+            build() {
+                this.next = [];
+                if (this.config.width < 4) {
+                    this.config.width = 4;
+                }
+                if (this.config.height < 4) {
+                    this.config.height = 4;
+                }
+                if (this.config.width > 14) {
+                    this.config.width = 14;
+                }
+                if (this.config.height > 14) {
+                    this.config.height = 14;
+                }
+                newmatrix = [];
+                for (let i = 0; i < this.config.height; i++) {
+                    const row = [];
+                    for (let r = 0; r < this.config.width; r++) {
+                        row.push(0)
+                    }
+                    newmatrix.push(row);
+                }
+
+                this.matrix = newmatrix;
+                this.setBalls();
+                this.finished = false;
+                console.log('done');
+            },
+            getClass(x, y) { //
+                let cl = [];
+                const coord = this.getCellPosition(x, y);
+                if (coord == this.selected) {
+                    cl.push('selected');
+                }
+
+                if (this.matrix[y - 1][x - 1] > 0) {
+                    cl.push('ball');
+                    cl.push("c" + this.matrix[y - 1][x - 1]);
+                } else {
+                    if (this.config.hint) {
+                        this.next.map(n => {
+                            if (n.x == x - 1 && n.y == y - 1) {
+                                cl.push('next c' + n.color);
+                            }
+                        });
+                    }
+                }
+                if (this.config.debug && this.possibleMoves.indexOf(coord) > -1) {
+                    cl.push('canmove');
+                }
+
+                return cl.join(" ");
+            },
+            getCellPosition(x, y) { //XY coords to numeric position
+                if (x > this.config.width) return false;
+                if (y > this.config.height) return false;
+                return ((y - 1) * this.config.width) + x;
+            },
+            setBalls() { // fill field with new balls
+
+                let ballscount = this.config.dispense;
+                //check free cells
+                let freespace = this.config.height * this.config.width;
+                for (let x = 0; x < this.matrix.length; x++) {
+                    const row = this.matrix[x];
+                    for (let c = 0; c < row.length; c++) {
+                        if (this.matrix[x][c] != 0) {
+                            freespace--;
+                        }
+                    }
+                }
+
+                generateBalls = (ballscount) => {
+                    let newBalls = [];
+                    let usedNumbers = [];
+                    for (let b = 0; b < ballscount; b++) {
+                        const randomX = Math.floor(Math.random() * (this.config.width) + 1);
+                        const randomY = Math.floor(Math.random() * (this.config.height) + 1);
+
+                        let color = Math.floor(Math.random() * (this.config.colors) + 1);
+                        const coord = this.getCellPosition(randomX, randomY);
+                        if (coord && this.matrix[randomY - 1][randomX - 1] == 0 && usedNumbers.indexOf(coord) == -1) {
+                            newBalls.push({
+                                color: color,
+                                coords: coord,
+                                x: randomX - 1,
+                                y: randomY - 1
+                            });
+                            usedNumbers.push(coord);
+                        } else {
+                            b--;
+                        }
+                    }
+                    return newBalls;
+                }
+
+                if (freespace == 0) {
+                    //GAME OVER
+                    this.finished = true;
+                    return false;
+                }
+                if (freespace < ballscount) {
+                    ballscount = freespace;
+                }
+                if (this.next.length == 0) { //beginning of new game
+                    this.next = generateBalls(ballscount);
+                }
+                this.next.map(b => { //put balls from next array
+                    if (this.matrix[b.y][b.x] == 0) {
+                        this.matrix[b.y][b.x] = b.color;
+                    } else { //cell is busy
+                        const other = generateBalls(1);
+                        this.matrix[other[0].y][other[0].x] = b.color;
+                    }
+
+                });
+
+                freespace -= ballscount;
+                if (freespace < ballscount) {
+                    ballscount = freespace;
+                }
+                console.log('free space:' + freespace);
+                if (freespace == 0) {
+                    //GAME OVER
+                    this.finished = true;
+                    return false;
+                }
+                this.next = generateBalls(ballscount);
+                this.destroyLines()
+            },
+            position2coords(position) { //numeric position to XY coords
+                let y = ~~(position / this.config.width);
+                if (position / this.config.width - y == 0) {
+                    y--;
+                }
+                const x = position - (y * this.config.width);
+                return [x, y + 1];
+            },
+            getNeighborhoods(coord) { //get cell's neighborhood cells
+                let n = [];
+                const xy = this.position2coords(coord);
+                const X = xy[0];
+                const Y = xy[1];
+                let x = 0; //tmp position store
+                let y = 0; //tmp position store
+
+                if (X > 1) { //left
+                    x = xy[0] - 1;
+                    y = xy[1];
+                    n.push({
+                        x: x,
+                        y: y,
+                        color: this.matrix[y - 1][x - 1],
+                        coord: this.getCellPosition(x, y),
+                        pos: 'left'
+                    });
+
+                }
+                if (X > 1 && Y > 1) { //upleft
+                    x = xy[0] - 1;
+                    y = xy[1] - 1;
+                    n.push({
+                        x: x,
+                        y: y,
+                        color: this.matrix[y - 1][x - 1],
+                        coord: this.getCellPosition(x, y),
+                        pos: 'upleft'
+                    });
+                }
+                if (X > 1 && Y < this.config.height) { //downleft
+                    x = xy[0] - 1;
+                    y = xy[1] + 1;
+                    n.push({
+                        x: x,
+                        y: y,
+                        color: this.matrix[y - 1][x - 1],
+                        coord: this.getCellPosition(x, y),
+                        pos: 'downleft'
+                    });
+                }
+
+                if (X < this.config.width) { //right
+                    x = xy[0] + 1;
+                    y = xy[1];
+                    n.push({
+                        x: x,
+                        y: y,
+                        color: this.matrix[y - 1][x - 1],
+                        coord: this.getCellPosition(x, y),
+                        pos: 'right'
+                    });
+                }
+                if (X < this.config.width && Y < this.config.height) { //downright
+                    x = xy[0] + 1;
+                    y = xy[1] + 1;
+                    n.push({
+                        x: x,
+                        y: y,
+                        color: this.matrix[y - 1][x - 1],
+                        coord: this.getCellPosition(x, y),
+                        pos: 'downright'
+                    });
+                }
+                if (X < this.config.width && Y > 1) { //upright
+                    x = xy[0] + 1;
+                    y = xy[1] - 1;
+                    n.push({
+                        x: x,
+                        y: y,
+                        color: this.matrix[y - 1][x - 1],
+                        coord: this.getCellPosition(x, y),
+                        pos: 'upright'
+                    });
+                }
+                if (Y > 1) { //up
+                    x = xy[0];
+                    y = xy[1] - 1;
+                    n.push({
+                        x: x,
+                        y: y,
+                        color: this.matrix[y - 1][x - 1],
+                        coord: this.getCellPosition(x, y),
+                        pos: 'up'
+                    });
+                }
+                if (Y < this.config.height) { //down
+                    x = xy[0];
+                    y = xy[1] + 1;
+                    n.push({
+                        x: x,
+                        y: y,
+                        color: this.matrix[y - 1][x - 1],
+                        coord: this.getCellPosition(x, y),
+                        pos: 'down'
+                    });
+                }
+                return n;
+
+            },
+            click(x, y) { //hangle left click
+                const coord = this.getCellPosition(x, y);
+                const color = this.matrix[y - 1][x - 1];
+                if (color > 0) {
+                    this.selected = coord;
+                } else if (color == 0 && this.selected) {
+                    //move
+                    if (this.possibleMoves.indexOf(coord) == -1 && !this.config.teleport) {
+                        //can't move
+                        console.log('cant');
+                        return;
+                    }
+                    const from = this.position2coords(this.selected);
+                    const movecolor = this.matrix[from[1] - 1][from[0] - 1];
+                    this.matrix[from[1] - 1][from[0] - 1] = 0;
+                    this.matrix[y - 1][x - 1] = movecolor;
+                    this.selected = false;
+                    console.log('move done');
+                    if (!this.destroyLines()) {
+                        this.setBalls();
+                        console.log('balls set');
+                    }
+                }
+            },
+            destroyLines() {
+                //todo destroy balls
+                const starts = this.getLineStarts();
+                let destroyed = false; //flag if any line was destroyed
+                starts.map((line, i) => {
+                    if (line.balls.length >= this.config.destroyline) {
+                        // console.log('destroy ', line.balls);
+                        line.balls.map(coords => {
+                            const XY = this.position2coords(coords);
+                            this.matrix[XY[1] - 1][XY[0] - 1] = 0;
+                        });
+                        destroyed = true;
+                        let bonus = Math.round(line.balls.length / this.config.destroyline * this.config.basebonus);
+                        this.bonus += bonus;
+                    }
+                });
+                return destroyed;
+            },
+            setPossibleMoves(pos) {
+                const neib = this.getNeighborhoods(pos);
+                neib.map(cell => {
+                    // console.log(cell.pos)
+                    if (['up', 'down', 'right', 'left'].indexOf(cell.pos) > -1 && cell.color == 0 && this.possibleMoves.indexOf(cell.coord) == -1) {
+                        this.possibleMoves.push(cell.coord);
+                        this.setPossibleMoves(cell.coord);
+                    }
+                });
+            },
+            getLineStarts() {
+                let starts = [];
+                const allow = [ //possible direction from start ball
+                    'right',
+                    'down',
+                    'downright',
+                    'downleft'
+                ];
+
+                for (let x = 0; x < this.matrix.length; x++) {
+                    const row = this.matrix[x];
+                    for (let c = 0; c < row.length; c++) {
+                        const color = this.matrix[x][c];
+                        if (color > 0) {
+                            let startpos = this.getCellPosition(c + 1, x + 1);
+                            let neib = this.getNeighborhoods(startpos);
+                            // console.log(neib);
+                            neib.map(cell => {
+                                if (allow.indexOf(cell.pos) > -1 && cell['color'] == color) { //same color
+                                    // console.log(color, pos, cell['coord']);
+                                    //first check if line already stated
+                                    let continues = false;
+                                    starts.map((line, i) => {
+                                        // console.log('checking line ' + startpos, cell.coord, cell.pos, line.direction, line.balls)
+                                        if (cell.pos == line.direction && line.balls.indexOf(startpos) > -1) {
+                                            continues = true;
+                                            starts[i].balls.push(cell.coord);
+                                        }
+                                    });
+                                    if (!continues) {
+                                        // console.log('creating start for line ', [startpos, cell.coord])
+                                        starts.push({
+                                            start: startpos,
+                                            color: color,
+                                            direction: cell.pos,
+                                            balls: [startpos, cell.coord]
+                                        });
+                                    }
+                                }
+                            });
+
+                        }
+                    }
+                }
+                // console.log(starts);
+                return starts;
+            }
+        }
+    });
+</script>
+<style>
+    #game {
+        /* display: flex; */
+        padding: 30px;
+    }
+
+    .controls {
+        min-width: 400px;
+        padding: 40px;
+    }
+
+    .field {
+        margin: 10px;
+        display: inline-block;
+        position: relative;
+    }
+
+    .field .overlay {
+        display: none;
+        position: absolute;
+        width: 100%;
+        top: 0;
+        height: 100%;
+        box-sizing: border-box;
+    }
+
+    .field .overlay.success {
+        border: 3px solid green;
+        display: block;
+        background-color: rgba(164, 201, 160, 0.2);
+
+    }
+
+    .field.onselect .cell {
+        cursor: pointer;
+    }
+
+    .field.over {
+        pointer-events: none;
+    }
+
+    .field.over .overlay {
+        display: block;
+        border: 3px solid red;
+        background-color: rgba(224, 133, 133, 0.2);
+    }
+
+    .row {
+        display: flex;
+    }
+
+    .next {
+        height: 15px;
+        width: 15px;
+        border-radius: 50%;
+        display: inline-block;
+    }
+
+    .cell {
+        /* transition: background-color 0.2s ease; */
+        width: 50px;
+        height: 50px;
+        border: 1px solid rgb(71, 71, 71);
+        background-color: #9D9494;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        position: relative;
+    }
+
+    .cell sub {
+        position: absolute;
+        top: 3px;
+        right: 3px;
+        color: #CECECE;
+    }
+
+    .cell .ball:hover {
+        cursor: pointer;
+    }
+
+    .cell .selected.ball {
+        animation: pulse 1.2s infinite;
+    }
+
+    .ball {
+        height: 35px;
+        width: 35px;
+        border-radius: 50%;
+        display: inline-block;
+    }
+
+    .cell .canmove:before {
+        background-color: darksalmon;
+        content: "";
+        width: 10px;
+        height: 10px;
+        display: inline-block;
+        top: -17px;
+        position: relative;
+        left: -17px;
+    }
+
+    .c1 {
+        background: radial-gradient(circle, white 1%, red 60%);
+    }
+
+    .c2 {
+        background: radial-gradient(circle, white 1%, blue 60%);
+    }
+
+    .c3 {
+        background: radial-gradient(circle, white 1%, green 60%);
+    }
+
+    .c4 {
+        background: radial-gradient(circle, white 1%, black 60%);
+    }
+
+    .c5 {
+        background: radial-gradient(circle, white 1%, orange 60%);
+    }
+
+    .c6 {
+        background: radial-gradient(circle, white 1%, yellow 60%);
+    }
+
+    .c7 {
+        background: radial-gradient(circle, white 1%, brown 60%);
+    }
+
+    .c8 {
+        background: radial-gradient(circle, white 1%, darkorchid 60%);
+    }
+
+    .toolbar {
+        display: flex;
+        justify-content: space-around;
+    }
+
+    .toolbar .nextballs {
+        display: flex;
+        padding: 10px;
+        margin-bottom: 10px;
+        justify-content: center;
+        cursor: pointer;
+    }
+
+    .toolbar .nextballs .ball {
+        margin: 0 5px;
+    }
+
+    @keyframes pulse {
+        0% {
+            transform: scale(1);
+            /* box-shadow: 0 0 0 0 rgba(0, 0, 0, 0.7); */
+        }
+
+        50% {
+            transform: scale(1.2);
+            box-shadow: 1 1 0 2px rgba(0, 0, 0, 0.8);
+        }
+
+        100% {
+            transform: scale(1);
+            /* box-shadow: 0 0 0 0 rgba(0, 0, 0, 0); */
+        }
+    }
+</style>
+
+</html>
