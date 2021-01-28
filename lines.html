@@ -12,16 +12,17 @@
 
 <body>
     <div id="game">
-        <div class="field" :class="{ over: finished, onselect: selected }">
-            <el-button @click="drawer = true">Config</el-button>
-            <div class="toolbar">
-                <div class="score">
-                    <h3>{{bonus}}</h3>
-                </div>
-                <div class="nextballs" @click="setBalls">
-                    <span :class="'ball c'+ball.color" v-for="ball in next"></span>
-                </div>
+        <el-button @click="drawer = true" type="info" icon="el-icon-setting">Config</el-button>
+        <el-divider></el-divider>
+        <div class="toolbar">
+            <div class="score">
+                <h3>{{bonus}}</h3>
             </div>
+            <div class="nextballs" @click="setBalls">
+                <span :class="'ball c'+ball.color" v-for="ball in next"></span>
+            </div>
+        </div>
+        <div class="field" :class="{ over: finished, onselect: selected }">
             <div v-for=" row, y in matrix" v-if="matrix.length > 0" class="row">
                 <span v-for="cell, x in row" class="cell" @click="click(x+1, y+1)">
                     <sub v-if="config.debug" style="position: absolute;">{{getCellPosition(x+1, y+1)}}</sub>
@@ -29,11 +30,10 @@
                     </span>
                 </span>
             </div>
-            <div :class="{overlay: true, success: win}"></div>
-            <el-divider></el-divider>
-            <div>
-                <el-button type="primary" @click="build">Restart game</el-button>
-            </div>
+        </div>
+        <el-divider></el-divider>
+        <div>
+            <el-button type="warning" @click="build">Restart game</el-button>
         </div>
 
         <el-drawer title="Configuration" :visible.sync="drawer" direction="rtl" size="40%" :modal="false">
@@ -468,7 +468,7 @@
 </script>
 <style>
     #game {
-        /* display: flex; */
+        display: inline-block;
         padding: 30px;
     }
 
@@ -481,23 +481,10 @@
         margin: 10px;
         display: inline-block;
         position: relative;
+        border: 3px solid rgb(71, 71, 71);
+        box-shadow: 2px 2px 6px black;
     }
 
-    .field .overlay {
-        display: none;
-        position: absolute;
-        width: 100%;
-        top: 0;
-        height: 100%;
-        box-sizing: border-box;
-    }
-
-    .field .overlay.success {
-        border: 3px solid green;
-        display: block;
-        background-color: rgba(164, 201, 160, 0.2);
-
-    }
 
     .field.onselect .cell {
         cursor: pointer;
@@ -505,12 +492,7 @@
 
     .field.over {
         pointer-events: none;
-    }
-
-    .field.over .overlay {
-        display: block;
         border: 3px solid red;
-        background-color: rgba(224, 133, 133, 0.2);
     }
 
     .row {
@@ -570,35 +552,35 @@
     }
 
     .c1 {
-        background: radial-gradient(circle, white 1%, red 60%);
+        background: radial-gradient(circle, #ddb8b8 1%, #a41111 60%);
     }
 
     .c2 {
-        background: radial-gradient(circle, white 1%, blue 60%);
+        background: radial-gradient(circle, #8a88dd 1%, #0b0bc6 60%);
     }
 
     .c3 {
-        background: radial-gradient(circle, white 1%, green 60%);
+        background: radial-gradient(circle, #a6d28d 1%, #027702 60%);
     }
 
     .c4 {
-        background: radial-gradient(circle, white 1%, black 60%);
+        background: radial-gradient(circle, #777373 1%, black 60%);
     }
 
     .c5 {
-        background: radial-gradient(circle, white 1%, orange 60%);
+        background: radial-gradient(circle, #f9cd79 1%, #a67400 60%);
     }
 
     .c6 {
-        background: radial-gradient(circle, white 1%, yellow 60%);
+        background: radial-gradient(circle, #ffe78a 1%, #d0c515 60%);
     }
 
     .c7 {
-        background: radial-gradient(circle, white 1%, brown 60%);
+        background: radial-gradient(circle, #b59a8d 1%, #864c02 60%);
     }
 
     .c8 {
-        background: radial-gradient(circle, white 1%, darkorchid 60%);
+        background: radial-gradient(circle, #a299a1 1%, #7f1bb0 60%);
     }
 
     .toolbar {
